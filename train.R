@@ -119,3 +119,4 @@ xgb_model$bestTune
 plot(xgb_model)      # Plot the performance of the training models
 res <- xgb_model$results
 res
+validate('xgboost', xgb_model, test, 'plots')
