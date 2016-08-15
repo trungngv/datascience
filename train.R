@@ -3,6 +3,8 @@ library(randomForest)
 library(gbm)
 library(xgboost)
 library(doParallel)
+library(dplyr)
+library(corrplot)
 
 # Some toy data
 data(Boston, package="MASS")
@@ -114,9 +116,19 @@ xgb_model <-train(label ~ .,
                  trControl = ctrl,
                  tuneGrid = grid)
  
- 
+print('Best hyperparameters:')
 xgb_model$bestTune
 plot(xgb_model)      # Plot the performance of the training models
 res <- xgb_model$results
 res
 validate('xgboost', xgb_model, test, 'plots')
+
+# CORRELATIONS -----
+# use the important features selected by the model and plot correlations
+importance <- varImp(xgb_model)$importance
+train %>% 
+  select(one_of(c('label', rownames(importance)[1:10]))) %>%
+  cor(method = 'pearson') %>% # method can be 'pearson', 'kendall', or 'spearman
+  corrplot(method = 'color', type='lower')
+
+# 
