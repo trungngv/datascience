@@ -16,8 +16,8 @@ psql_conn_object <- function(server, schema, user, password) {
 }
 
 # Gets a psql connection string from user and password
-psql_conn_string <- function(user, password) {
-  sprintf("psql 'host=analytics-production.cqhuxbkape0v.ap-southeast-2.redshift.amazonaws.com dbname=fixedodds user=%s port=5439 password=%s'", user, password)
+psql_conn_string <- function(server, schema, user, password) {
+  sprintf("psql 'host=%s dbname=%s user=%s port=5439 password=%s'", server, schema, user, password)
 }
 
 # Copy a file from S3 into Redshift
