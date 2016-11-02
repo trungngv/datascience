@@ -1,6 +1,6 @@
 # Utility method for sensinble validation of a classifier. There will be kinds of outputs: text and figures.
 # All text-based results are stored in output_dir/prefix_summary_date.txt, and all figures are stored in 
-# output_dir/figures/prefix_..._date.txt.
+# output_dir/figures/prefix_....txt.
 # Parameters:
 #   - output_dir : where to store output
 #   - prefix : a prefix in all files, typically method name, for distinguishing different methods, if applicable
@@ -13,6 +13,8 @@ validate <- function(output_dir, prefix, model, test) {
   roc_file <- sprintf("%s/figures/%s_roc.pdf", output_dir, prefix)
   cum_detection_file <- sprintf("%s/figures/%s_cumulative_detection.pdf", output_dir, prefix)
   lift_file <- sprintf("%s/figures/%s_lift.pdf", output_dir, prefix)
+  prec_rec_file <- sprintf("%s/figures/%s_prec_recall.pdf", output_dir, prefix)
+  density_file <- sprintf("%s/figures/%s_two_classes_density.pdf", output_dir, prefix)
   dir.create(figure_dir, recursive = TRUE)
   
   imp <- varImp(model)
@@ -69,5 +71,18 @@ validate <- function(output_dir, prefix, model, test) {
     xlab("% of test instances (decreasing in score)") +
     ylab("Lift")
   ggsave(lift_file)
+
+  # 2-classes density plot
+  data_frame(label = test$label, pred = pred[, 'class1']) %>% 
+    ggplot(aes(x = pred)) + geom_density(aes(color = factor(label), linetype = factor(label))) +
+    labs(title = 'Prediction scores for two classes')
+   ggsave(density_file)
+   
+  # precision - recall curve (require ROCR)
+  pdf(file = prec_rec_file)
+  plot(performance(prediction(pred[, "class1"], test$label), "prec", "rec"))
+  title('Precision - recall curve')
+  dev.off()
+
   pred
 }
