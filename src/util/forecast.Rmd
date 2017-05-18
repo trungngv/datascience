@@ -1,0 +1,329 @@
+---
+title: "Forecast"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(forecast)
+library(data.table)
+library(lubridate)
+library(dplyr)
+library(readr)
+library(fpp2)
+```
+
+Here we work with an real-world application of turnover forecasting.
+
+```{r, read_data}
+d <- read_csv('~/projects/forecast/data/tn_daily_turnover.txt')
+head(d)
+d <- mutate(d, trading_date = parse_date_time(trading_date, 'ymd')) %>%
+  arrange(product_group_id, trading_date) %>%
+  # incomplete month
+  filter(trading_date < '2017-05-01')
+```
+
+We plot all 5 different products to see their patterns. Each product seems to exhibit their own patterns, so we'll investigate each of them individually (if time allows).
+
+```{r}
+id <- 1
+td <- filter(d, product_group_id == id)
+# This is the second form of start where 2014 is the base and 1 is the offset (using the unit corresponding to freq)
+y <- ts(td$turnover, frequency=365, start=c(2014,1))
+autoplot(y) + ggtitle(sprintf("daily turnover for product group %d", id))
+```
+
+```{r, echo=FALSE}
+id <- 2
+td <- filter(d, product_group_id == id)
+# This is the second form of start where 2014 is the base and 1 is the offset (using the unit corresponding to freq)
+y <- ts(td$turnover, frequency=365, start=c(2014,1))
+autoplot(y) + ggtitle(sprintf("daily turnover for product group %d", id))
+```
+
+```{r, echo=FALSE}
+id <- 3
+td <- filter(d, product_group_id == id)
+# This is the second form of start where 2014 is the base and 1 is the offset (using the unit corresponding to freq)
+y <- ts(td$turnover, frequency=365, start=c(2014,1))
+autoplot(y) + ggtitle(sprintf("daily turnover for product group %d", id))
+```
+
+```{r, echo=FALSE}
+id <- 4
+td <- filter(d, product_group_id == id)
+# This is the second form of start where 2014 is the base and 1 is the offset (using the unit corresponding to freq)
+y <- ts(td$turnover, frequency=365, start=c(2014,1))
+autoplot(y) + ggtitle(sprintf("daily turnover for product group %d", id))
+```
+
+```{r, echo=FALSE}
+id <- 5
+td <- filter(d, product_group_id == id)
+# This is the second form of start where 2014 is the base and 1 is the offset (using the unit corresponding to freq)
+y <- ts(td$turnover, frequency=365, start=c(2014,1))
+autoplot(y) + ggtitle(sprintf("daily turnover for product group %d", id))
+```
+
+In the following let's use product group 1 as a running example.
+
+```{r}
+# daily timeseries
+d1 <- filter(d, product_group_id == 1) %>% mutate(turnover = turnover/10^6)
+td <- ts(d1$turnover, frequency=365, start=c(2014,1))
+# monthly timeseries
+tdm <- d1 %>% group_by(year(trading_date), month(trading_date)) %>% 
+  summarise(month_turnover = sum(turnover))
+colnames(tdm) <- c('year', 'month', 'turnover')
+tdm <- ts(tdm$turnover, frequency = 12, start=2014)
+```
+
+## Is there seasonality?
+
+It's quite clear from the plots that there is seasonal effects in the data. But let's make it clearer with a few plots.
+
+### Seasonal plot
+
+Here we plot the data against invidual "seasons" over several years in which the data were observed. There's a very clear season trend here.
+
+```{r}
+ggseasonplot(td, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("$ million") + ggtitle("Seasonal plot: turnover")
+```
+
+### Seasonal plot using polar coordinates
+
+Using polar plot we see quite clearly the monthly seasonal effect, and also the increasing trend over time. There are also some cyclic variations due to business activities. Here in particular the strong TO in Jun 2014 due to the World cup, or the availability of sporting events in the summer.
+
+```{r}
+ggseasonplot(tdm, polar=TRUE) +
+  ylab("$ million") + ggtitle("Polar seasonal plot: turnover")
+```
+
+### Seasonal subseries plots
+
+This shows the overall trend (changing in seasonality overtime) very clearly. Most of the months see an upward trend in terms of turnover.
+The trough in May is due to incomplete data for that month. The anomalies in May and Aug are due to special events (e.g. World Cup) or the changes in number of events due to calendar (e.g. weekends). This is the nature of sports data.
+
+```{r}
+ggsubseriesplot(tdm) + ylab("$ million") +
+  ggtitle("Seasonal subseries plot: monthly turnover")
+```
+
+### Lag plot / Correlogram
+
+The lag plot shows strongest correlation when lag = 12, indicating a yearly seasonality. There's also a trough at 6 and 18, indicating some 'holiday' seasons where there are fewer events.
+
+```{r}
+gglagplot(tdm)
+```
+
+
+
+## Basic benchmark
+
+Some benchmark forecasting methods include: mean, last value, same value last season.
+
+### Mean average `meanf`
+
+```{r}
+autoplot(meanf(td, h=365))
+```
+
+### Naive method `naive`
+Use the last value as prediction.
+
+```{r}
+autoplot(naive(td, h=365))
+```
+
+### Seasonal naive method `snaive`
+
+Using the last value of the previous season.
+
+```{r}
+autoplot(snaive(td, h=365))
+```
+
+## Transformations and adjustments
+
+The purpose of these transformations and adjustments is to simplify the patterns in the historical data by **removing known sources of variation** or by **making the pattern more consistent** across the whole data set. Simpler patterns usually lead to more accurate forecasts.
+
+### Power transformations 
+
+Log can be used if value range is large and domain is positive. Power transformation can be used but less interpretable. Sometimes power transformation may not have effect on forecasts (i.e. mean value), but can quite affect prediction intervals (i.e. variance).
+
+### Calendar adjustments
+
+We don't apply here but it can be used to adjust for example month / quarter length (i.e. number of days). For example `monthdays(ts)` gives number of days for each month if `ts` has monthly frequency.
+
+## Residuals
+
+Forecasting is one form of regression. General criteria of good residuals in regression still apply:
+
+1. The residuals are uncorrelated. If there is correlation, there is information not yet captured in the model
+2. The residuals have zero mean (unbiased).
+3. The residuals have constant variance (to allow easy estimate of prediction interval)
+4. The residuals are normally distributed (which fit the underlying assumption of white noise).
+
+Often we may not get residuals that satisfy all these 4 criteria. And even if they do, this does not mean they can't be improved.
+
+In addition, residuals also make a timeseries. This timeseries should look like a random process, which can be verified through **historgram** and **autocorrelation plot** of the residuals.
+
+Let's see how good is a seasonal naive prediction in this case. First we check the residuals timeseries plot.
+
+```{r}
+res <- residuals(naive(td))
+autoplot(res) + xlab("Day") + ylab("") +
+  ggtitle("Residuals from naïve method")
+```
+
+How does its histogram look like? The left tail is a little too long for a normal distribution.
+
+```{r, warning=FALSE}
+qplot(res, geom='histogram', bins=30)
+```
+
+How about correlogram? Most correlations are outside the interval so definitely this is not a good model.
+
+```{r}
+ggAcf(res)
+```
+
+Luckily there is a convenient method that perform all these checks:
+
+```{r}
+checkresiduals(snaive(td))
+```
+
+## Evaluate forecasting methods
+
+Visual inspection of prediction with seasonal naive method:
+
+```{r}
+td_train <- window(td, start=2014, end=c(2016,365))
+pred <- snaive(td_train, h=121)
+autoplot(window(td, start=2017)) + autolayer(pred, series='Seasonal naive', PI=FALSE) + 
+  xlab("Day") + ylab("Millions") + ggtitle("Forecast vs. actual")
+```
+
+Quantitative measurement of accuracy:
+
+```{r}
+td_test <- window(td, start=2017)
+accuracy(pred, td_test)
+```
+
+## Linear Regression Forecast (with `tslm`)
+
+We now test several linear regression models on our timeseries. Again let's split data into training and test.
+
+```{r}
+d1 <- filter(d, product_group_id == 1) %>% mutate(turnover = turnover / 10^6)
+td <- ts(d1$turnover, frequency=365, start=c(2014,1))
+td_train <- window(td, start=2014, end=c(2016,365))
+td_test <- window(td, start=2017)
+```
+
+### Trend and season predictors
+
+First models include trend only, season only, and both trend and season. `trend` and `season` are special predictors / features automatically created by `tslm`.
+
+```{r}
+m_trend <- tslm(td_train ~ trend)
+m_season <- tslm(td_train ~ season)
+autoplot(td_train, series='data') + 
+  autolayer(fitted(m_trend), series='Trend') +
+  autolayer(fitted(m_season), series='Season')
+```
+
+```{r}
+m_trend_season <- tslm(td_train ~ trend + season)
+autoplot(td_train, series='data') + 
+  autolayer(fitted(m_trend), series='Trend') +
+  autolayer(fitted(m_trend_season), series='Season')
+```
+
+Obviously for this dataset a model with both trend and seasonal is doing to be much better. We're capturing seasonality quite well but we still seem to underfit quite a bit. The reason is that a dummy variable is created based on the daily frequency of the timeseries, so we haven't accounted for monthly and weekly effect yet. We can see this by examining the residuals, which show strong correlations at regular intervals, thus confirming our observation.
+
+```{r}
+#checkresiduals(m_trend_season)
+```
+
+How about Fourier series?
+
+```{r}
+m_fourier <- tslm(td_train ~ trend + fourier(td_train, K=52*2))
+autoplot(td_train, series='data') + 
+  autolayer(fitted(m_fourier), series='Trend + Fourier')
+```
+
+```{r}
+#checkresiduals(m_fourier)
+```
+
+Which model has lower train error? The model with trend and season is better.
+
+```{r}
+accuracy(fitted(m_trend_season), td_train)
+accuracy(fitted(m_fourier), td_train)
+```
+
+### Additional predictors
+
+Now let's try adding a few more features: weekday and month
+
+```{r}
+d1 <- d1 %>% mutate(day = factor(wday(trading_date)),
+                          month = factor(month(trading_date)))
+td <- ts(select(d1, -product_group_id, -trading_date), start=2014, frequency=365)
+td_train <- window(td, start=2014, end=c(2016,365))
+td_test <- window(td, start=2017)
+```
+
+And build a model using these new features as **continuous** values.
+
+```{r}
+m_extra <- tslm(turnover ~ day + month + trend + season, data=td_train)
+m_quad <- tslm(turnover ~ day + month + trend + season + day*trend + season*trend + month*trend, data=td_train)
+autoplot(td_train[, "turnover"], series = 'Data') +
+  autolayer(fitted(m_extra), series = 'New predictors (first order)') +
+  autolayer(fitted(m_quad), series = 'New predictors (second order)')
+```
+
+How does this project to the future?
+
+```{r}
+dtest <- data.frame(td_test[, c('day', 'month')])
+f0 <- forecast(m_trend_season, dtest, h=121)
+f1 <- forecast(m_extra, dtest, h=121)
+f2 <- forecast(m_quad, dtest, h=121)
+f_avg <- (f0$mean + f1$mean + f2$mean)/3
+autoplot(td_test[, 'turnover'], series='Test data') +
+#  autolayer(f0$mean, series='Trend + season') +
+#  autolayer(f1$mean, series='1st order') +
+#  autolayer(f2$mean, series='2nd order') +
+  autolayer(f_avg, series='Ensemble')
+```
+
+So the new predictors do help (`m_extra` is the best model), and 2nd orders severely overfits. An ensemble method turns out to work the best.
+
+Let's evaluate the accuracy of the model on both training and test set. 
+
+```{r}
+print('training errors')
+rbind(accuracy(fitted(m_trend_season), td_train),
+      accuracy(fitted(m_extra), td_train),
+      accuracy(fitted(m_quad), td_train))
+```
+
+```{r}
+print('test errors')
+rbind(accuracy(f0$mean, td_test),
+                accuracy(f1$mean, td_test),
+                accuracy(f2$mean, td_test),
+                accuracy(f_avg, td_test))
+```
+
+The disadvantage is that using ensembling it's not straightforward to add prediction intervals. We look at more advanced methods in the next section.
