@@ -326,4 +326,65 @@ rbind(accuracy(f0$mean, td_test),
                 accuracy(f_avg, td_test))
 ```
 
-The disadvantage is that using ensembling it's not straightforward to add prediction intervals. We look at more advanced methods in the next section.
+The disadvantage is that using ensembling it's not straightforward to add prediction intervals. We look at more advanced methods in future sections.
+
+## Classical decomposition
+
+Timeseries can be decomposed into different components. The components can be combined via addition or multiplication, or both. The main components are:
+
+- Trend-cycle: One way to estimate is via moving average, which smooths but preserves both short and long term trend
+- Seasonal: This is something that repeats, i.e. does not change very quickly from one period to another. One way to estimate is to remove trend-cycle and simply taking average over same seasons (e.g. all March).
+- Remaining: the thing that isn't picked up by trend and seasonality 
+
+```{r}
+fit <- decompose(td_train[, 'turnover'], type="additive")
+autoplot(fit) +
+  ggtitle("Classical additive decomposition of turnover")
+```
+
+## X11 decomposition
+
+X11 is a more advanced decomposition method, see [Seasonal Adjustment Methods and Real Time Trend-Cycle Estimation](http://www.springer.com/gp/book/9783319318202) and package `seasonal`.
+
+```{r}
+fit <- decompose(tdm, type='additive')
+autoplot(fit) +
+  ggtitle("Classical additive decomposition of monthly turnover")
+```
+
+```{r}
+fit <- seas(tdm, x11="")
+autoplot(fit) +
+  ggtitle("X11 additive decomposition of monthly turnover")
+```
+
+We can access individual components, see graph below. This method is not working very well as we can see the large residuals.
+
+```{r}
+autoplot(tdm, series="Data") +
+  autolayer(trendcycle(fit), series="Trend") +
+  autolayer(seasadj(fit), series="Seasonally Adjusted") +
+  xlab("Year") + ylab("New orders index") +
+  ggtitle("Monthly turnover") +
+  scale_colour_manual(values=c("gray","blue","red"),
+                     breaks=c("Data","Seasonally Adjusted","Trend"))
+```
+
+## Exponential smoothing
+
+Exponential smoothing models are weighted average where more recent observations are given higher weights. Let's try fitting `ets` (ExponenTialSmoothing, or Error, Trend, Season) to our turnover data. All parameters will be estimated and selected automatically.
+
+```{r}
+tdm_train <- window(tdm, start=c(2014,1), end=c(2016,04))
+ets_model <- ets(tdm_train, model='ZZA')
+```
+
+There are many methods that work with the ets model / object. The selected model is `ETS(M,A,M)` which is multiplicative error with additive trend and multiplicate seasonal.
+
+```{r}
+summary(ets_model)
+autoplot(tdm_train, series='observed') + autolayer(fitted(ets_model), series='fitted')
+autoplot(forecast(ets_model), series='forecast') + autolayer(tdm, series='observed')
+```
+
+We see that forecast is quite good for the later half of the the year (where typically there are fewer events). But it overestimates the first half, which is due to the variation of availabilities in summer time. This is expected as there are some re-occuring events with frequency of 4 years like world cup. If we want better estimate, would have to encode manually or have data of a full frequency period.
